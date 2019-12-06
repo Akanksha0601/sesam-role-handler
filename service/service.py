@@ -3,23 +3,21 @@
 import requests
 import os
 import json
-from sesamutils import sesam_logger
+from sesamutils import sesam_logger, Dotdictify
 
 # fetch env vars
 jwt = os.environ.get('JWT')
 node_api = os.environ.get('NODE_API')
 node_subscription = os.environ.get('NODE_SUBSCRIPTION')
-portal_api = os.environ.get('PORTAL_API')|
+portal_api = os.environ.get('PORTAL_API')
 
 # set logging
 logger = sesam_logger('sesam-role-handler', timestamp=True)
 
 # API urls
 available_roles = portal_api + '/subscriptions/' + node_subscription + '/available-roles'
-#pipes_collection = node_api + '/permissions/pipes-collection'
 pipe_permissions = node_api + '/permissions/pipes/'
 pipes = node_api + '/pipes'
-#system_collection = node_api + '/permissions/systems-collection'
 system_permissions = node_api + '/permissions/systems/'
 systems = node_api + '/systems'
 member_roles = portal_api + '/subscriptions/' + node_subscription + '/members/'
@@ -31,8 +29,8 @@ def get_available_roles():
     logger.info("fetching available roles...")
 
     url = available_roles
-
     response = requests.request("GET", url, headers=headers)
+    logger.debug (f"url:{url} {response}")
     return response
 
 
@@ -40,68 +38,65 @@ def get_pipes():
     logger.info("fetching pipes...")
 
     url = pipes
-
     response = requests.request("GET", url, headers=headers)
+    logger.debug (f"url:{url} {response}")
     return response
 
 
-def get_creator_roles(user_id):
-    logger.info("fetching roles for user_id {user_id}...")
+def get_creator_roles(user_id, email):
+    logger.info(f"fetching roles for user: {email} with user_id: {user_id} ...")
 
     url = member_roles + user_id
-    logger.debug("url: {url}")
-
     response = requests.request("GET", url, headers=headers)
+    logger.debug (f"url:{url} {response}")
     return response
 
 
 def set_pipe_permissions(role_id, pipe_id):
     logger.info("setting pipe permissions...")
-
+    logger.info (f"adding role(s) {role_id} on pipe {pipe_id}")
     url = pipe_permissions + pipe_id
-    logger.debug("url: {url}")
-    payload = "[[\"allow_all\"," + json.dumps(role_id) + ",[]]]"
-    logger.debug("payload: {payload}")
-
-    # response = requests.request("PUT", url, data=payload, headers=headers)
-    response = "foo"
+    payload = "[[\"allow_all\"," + json.dumps (role_id) + ",[]]]"
+    logger.debug(f"payload:{payload}" )
+    response = requests.request("PUT", url, data=payload, headers=headers)
+    logger.debug (f"url:{url} {response}")
     return response
 
+if __name__ == '__main__':
 
-# fetch all available roles
-roles = json.loads(get_available_roles().text)
+    # fetch all available roles
+    roles = json.loads(get_available_roles().text)
 
-# isolate custom roles
-available_custom_roles = []
+    # isolate custom roles
+    available_custom_roles = []
 
-for role in roles:
-    if role['is-custom-role']:
-        available_custom_roles.append(role['id'])
+    for role in roles:
+        if role['is-custom-role']:
+            available_custom_roles.append(role['id'])
 
-# fetch all pipes
-json_pipe_list = get_pipes().text
-pipe_list = json.loads(json_pipe_list)
+    # fetch all pipes
+    json_pipe_list = get_pipes().text
+    pipe_list = json.loads(json_pipe_list)
 
-# fetch pipe creators
-pipe_creator_dict = {}
+    # fetch pipe creators
+    pipe_creator_dict = {}
 
-for pipe in pipe_list:
-    pipe_creator_dict[pipe['_id']] = pipe['config']['audit']['created_by']['user_id']
+    for p in pipe_list:
+        pipe = Dotdictify(p)
+        pipe_creator_dict[pipe._id] = pipe.config.audit.created_by
 
+    # fetch creator's roles and keep only custom roles
+    for pipe_id in pipe_creator_dict:
+        email = pipe_creator_dict[pipe_id].email
+        user_id = pipe_creator_dict[pipe_id].user_id
+        response = json.loads(get_creator_roles(user_id, email).text)
+        user_roles = response['roles']
 
-# fetch creator's roles and keep only custom roles
-for pipe_id in pipe_creator_dict:
-    user_id = pipe_creator_dict[pipe_id]
-    response = json.loads(get_creator_roles(user_id).text)
-    user_roles = response['roles']
+        custom_user_roles = []
 
-    custom_user_roles = []
+        for role in user_roles:
+            if role in available_custom_roles:
+                custom_user_roles.append(role)
 
-    for role in user_roles:
-        if role in available_custom_roles:
-            custom_user_roles.append(role)
-
-#    print(custom_user_roles)
-
-    if custom_user_roles:
-        print(set_pipe_permissions(custom_user_roles, pipe_id))
+        if custom_user_roles:
+            set_pipe_permissions(custom_user_roles, pipe_id)
