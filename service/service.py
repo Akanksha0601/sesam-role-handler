@@ -84,11 +84,6 @@ if __name__ == '__main__':
     roles = json.loads(get_available_roles().text)
 
     # isolate custom roles
-    # available_custom_roles = []
-    # 
-    # for role in roles:
-    #     if role['is-custom-role']:
-    #         available_custom_roles.append(role['id'])
     available_custom_roles = isolate_custom_roles(roles)
     
     # fetch all pipes
