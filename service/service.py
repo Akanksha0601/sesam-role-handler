@@ -62,12 +62,34 @@ def set_pipe_permissions(role_id, pipe_id):
     logger.debug (f"url:{url} {response}")
     return response
 
+
+# system functions
+def get_system():
+    logger.info ("fetching systems...")
+
+    url = systems
+    response = requests.request("GET", url, headers=headers)
+    logger.debug (f"url:{url} {response}")
+    return response
+
+
+def set_sys_permissions(role_id, sys_id):
+    logger.info ("setting system permissions...")
+    logger.info (f"adding role(s) {role_id} on system {sys_id}")
+    url = system_permissions + sys_id
+    payload = "[[\"allow_all\"," + json.dumps (role_id) + ",[]]]"
+    logger.debug (f"payload:{payload}")
+    response = 'foo'
+    response = requests.request ("PUT", url, data=payload, headers=headers)
+    logger.debug (f"url:{url} {response}")
+    return response
+
 if __name__ == '__main__':
 
-    # fetch all available roles
+    # fetch all available roles in subscription
     roles = json.loads(get_available_roles().text)
 
-    # isolate custom roles
+    # isolate custom roles in subscription
     available_custom_roles = []
 
     for role in roles:
@@ -92,11 +114,36 @@ if __name__ == '__main__':
         response = json.loads(get_creator_roles(user_id, email).text)
         user_roles = response['roles']
 
-        custom_user_roles = []
 
-        for role in user_roles:
-            if role in available_custom_roles:
-                custom_user_roles.append(role)
+    # fetch all systems
+    json_system_list = get_system().text
+    system_list = json.loads (json_system_list)
 
-        if custom_user_roles:
-            set_pipe_permissions(custom_user_roles, pipe_id)
+    # fetch system creators
+    system_creator_dict = {}
+
+    for s in system_list:
+        system = Dotdictify(s)
+        try:
+            system_creator_dict[system._id] = system.config.audit.created_by
+        except AttributeError:
+            get_system()
+
+
+    # fetch creator's roles and keep only custom roles
+    for sys_id in system_creator_dict:
+        email = system_creator_dict[sys_id].email
+        user_id = system_creator_dict[sys_id].user_id
+        response = json.loads (get_creator_roles (user_id, email).text)
+        user_roles = response['roles']
+    print(user_roles)
+
+    custom_user_roles = []
+
+    for role in user_roles:
+        if role in available_custom_roles:
+            custom_user_roles.append(role)
+
+    if custom_user_roles:
+        set_pipe_permissions (custom_user_roles, pipe_id)
+        set_sys_permissions(custom_user_roles,sys_id)
