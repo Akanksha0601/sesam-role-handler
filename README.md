@@ -13,7 +13,7 @@ TODO: Sensible ms description goes here.
 
 `NODE_SUBSCRIPTION` - subscription id of the sesam node instance
 
-`PORTAL_API` - base url to the sesam portal (https://portal.sesam.io/api
+`PORTAL_API` - base url to the sesam portal (https://portal.sesam.io/api)
 
 ## Usage
 
