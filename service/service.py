@@ -15,12 +15,11 @@ portal_api = os.environ.get('PORTAL_API')
 logger = sesam_logger('sesam-role-handler', timestamp=True)
 
 # API urls
-available_roles = portal_api + '/subscriptions/' + node_subscription + '/available-roles'
-pipe_permissions = node_api + '/permissions/pipes/'
-pipes = node_api + '/pipes'
-system_permissions = node_api + '/permissions/systems/'
-systems = node_api + '/systems'
-member_roles = portal_api + '/subscriptions/' + node_subscription + '/members/'
+available_roles_api = portal_api + '/subscriptions/' + node_subscription + '/available-roles'
+pipes_api = node_api + '/pipes'
+systems_api = node_api + '/systems'
+member_roles_api = portal_api + '/subscriptions/' + node_subscription + '/members/'
+permissions_api = node_api + '/permissions/'
 
 headers = {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + jwt}
 
@@ -28,7 +27,7 @@ headers = {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + jwt}
 def get_available_roles():
     logger.info("fetching available roles ...")
 
-    url = available_roles
+    url = available_roles_api
     response = requests.request("GET", url, headers=headers)
     logger.debug(f"url:{url} {response}")
 
@@ -48,7 +47,7 @@ def isolate_custom_roles(roles):
 def get_pipes():
     logger.info("fetching pipes ...")
 
-    url = pipes
+    url = pipes_api
     response = requests.request("GET", url, headers=headers)
     logger.debug(f"url:{url} {response}")
 
@@ -58,46 +57,36 @@ def get_pipes():
 def get_member_roles(user_id, email):
     logger.info(f"fetching roles for user: {email} with user_id: {user_id} ...")
 
-    url = member_roles + user_id
+    url = member_roles_api + user_id
     response = requests.request("GET", url, headers=headers)
+    logger.debug(f"url:{url} {response}")
+
+    return response.text
+
+
+def set_permissions(role_id, object_id, object_type, scope="allow_all", permissions=[]):
+    logger.info("setting object permissions ...")
+
+    logger.info(f"adding role(s) {role_id} on {object_id}")
+    url = f"{permissions_api}{object_type}/{object_id}"
+    payload = f"[[\"{scope}\", {json.dumps(role_id)}, {permissions}]]"
+    logger.debug(f"payload:{payload}")
+    response = requests.request("PUT", url, data=payload, headers=headers)
+    #response = 'foo'
     logger.debug(f"url:{url} {response}")
 
     return response
 
 
-def set_pipe_permissions(role_id, pipe_id):
-    logger.info("setting pipe permissions ...")
-
-    logger.info (f"adding role(s) {role_id} on pipe {pipe_id}")
-    url = pipe_permissions + pipe_id
-    payload = f"[[\"allow_all\", {json.dumps(role_id)}, []]]"
-    logger.debug(f"payload:{payload}")
-    response = requests.request("PUT", url, data=payload, headers=headers)
-    logger.debug (f"url:{url} {response}")
-
-    return response
-
-
 # system functions
-def get_system():
-    logger.info ("fetching systems...")
+def get_systems():
+    logger.info("fetching systems...")
 
-    url = systems
+    url = systems_api
     response = requests.request("GET", url, headers=headers)
-    logger.debug (f"url:{url} {response}")
+    logger.debug(f"url:{url} {response}")
     return response
 
-
-def set_sys_permissions(role_id, sys_id):
-    logger.info ("setting system permissions...")
-    logger.info (f"adding role(s) {role_id} on system {sys_id}")
-    url = system_permissions + sys_id
-    payload = "[[\"allow_all\"," + json.dumps (role_id) + ",[]]]"
-    logger.debug (f"payload:{payload}")
-    response = 'foo'
-    response = requests.request ("PUT", url, data=payload, headers=headers)
-    logger.debug (f"url:{url} {response}")
-    return response
 
 if __name__ == '__main__':
 
@@ -122,42 +111,45 @@ if __name__ == '__main__':
         email = pipe_creator_dict[pipe_id].email
         user_id = pipe_creator_dict[pipe_id].user_id
 
-        response = json.loads(get_member_roles(user_id, email).text)
-        member_roles = response['roles']
+        response = json.loads(get_member_roles(user_id, email))
+        member_roles = response["roles"]
 
         # keep only creator's custom roles
         member_custom_roles = []
 
+        for role in member_roles:
+            if role in available_custom_roles:
+                member_custom_roles.append(role)
+
+        # set creator's custom roles on pipe
+        if member_custom_roles:
+            set_permissions(member_custom_roles, pipe_id, object_type="pipes")
+
     # fetch all systems
-    json_system_list = get_system().text
-    system_list = json.loads (json_system_list)
+    system_list = json.loads(get_systems().text)
 
     # fetch system creators
     system_creator_dict = {}
 
     for s in system_list:
         system = Dotdictify(s)
-        try:
+        if system.config.audit:
             system_creator_dict[system._id] = system.config.audit.created_by
-        except AttributeError:
-            get_system()
 
-
-    # fetch creator's roles and keep only custom roles
+    # fetch system creator's roles
     for sys_id in system_creator_dict:
         email = system_creator_dict[sys_id].email
         user_id = system_creator_dict[sys_id].user_id
-        response = json.loads (get_member_roles (user_id, email).text)
-        user_roles = response['roles']
-    print(user_roles)
+        response = json.loads(get_member_roles(user_id, email))
+        member_roles = response["roles"]
 
-    custom_user_roles = []
+        # keep only creator's custom roles
+        member_custom_roles = []
 
-    for role in member_roles:
-        if role in available_custom_roles:
-            member_custom_roles.append(role)
+        for role in member_roles:
+            if role in available_custom_roles:
+                member_custom_roles.append(role)
 
-    # set creator's custom roles on pipe
-    if member_custom_roles:
-        set_pipe_permissions (custom_user_roles, pipe_id)
-        set_sys_permissions(member_custom_roles,sys_id)
+        # set creator's custom roles on system
+        if member_custom_roles:
+            set_permissions(member_custom_roles, sys_id, object_type="systems")
