@@ -15,6 +15,8 @@ TODO: Sensible ms description goes here.
 
 `PORTAL_API` - base url to the sesam portal (https://portal.sesam.io/api)
 
+`SCHEDULE_INTERVAL` - number of seconds to wait before next run
+
 ## Usage
 
 TODO: Usage description goes here.
