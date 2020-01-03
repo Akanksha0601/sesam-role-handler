@@ -12,7 +12,7 @@ jwt = os.environ.get('JWT')
 node_api = os.environ.get('NODE_API')
 node_subscription = os.environ.get('NODE_SUBSCRIPTION')
 portal_api = os.environ.get('PORTAL_API')
-schedule_interval = int(os.environ.get('SCHEDULE_INTERVAL'))
+schedule_interval = int(os.environ.get('SCHEDULE_INTERVAL', 60))  # default 60 seconds
 
 # set logging
 logger = sesam_logger('sesam-role-handler', timestamp=True)
